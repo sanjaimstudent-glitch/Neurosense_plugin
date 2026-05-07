@@ -1,9 +1,8 @@
-// NeuroSense background service worker
+﻿// NeuroSense background service worker
 // Sets default storage on install.
 
 const DEFAULTS = {
   focusMode: false,
-  deepFocus: true,
   textSimplifier: false,
   dataVault: false,
   theme: 'zen',

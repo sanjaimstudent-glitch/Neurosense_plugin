@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -18,42 +18,11 @@
       margin: 0 0 12px 0;
       color: #1264a3;
     }
-    .panel {
-      margin-bottom: 12px;
-      padding: 10px;
-      background: #ffffff;
-      border: 1px solid #d8e3eb;
-      border-radius: 10px;
-      box-shadow: 0 4px 12px rgba(18, 100, 163, 0.08);
-    }
-    .panel-title {
-      margin: 0 0 10px 0;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: #5b6b79;
-    }
     .row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin-bottom: 10px;
-      gap: 12px;
-    }
-    .row:last-child {
-      margin-bottom: 0;
-    }
-    .focus-row {
-      align-items: flex-start;
-    }
-    .focus-copy {
-      flex: 1;
-    }
-    .focus-meta {
-      margin-top: 2px;
-      font-size: 11px;
-      color: #6b7d8a;
     }
     label { flex: 1; }
     select {
@@ -104,7 +73,9 @@
     }
     .toggle.on::after { transform: translateX(18px); }
     .focus-section {
-      margin-top: 8px;
+      margin-left: 0;
+      margin-top: 6px;
+      margin-bottom: 12px;
       padding: 8px 10px;
       background: #e8f4f8;
       border-radius: 6px;
@@ -119,57 +90,50 @@
 <body>
   <h1>NeuroSense</h1>
 
-  <div class="panel">
-    <div class="panel-title">Focus Control Panel</div>
-
-    <div class="row focus-row">
-      <div class="focus-copy">
-        <label>Focus Mode</label>
-        <div class="focus-meta">3 channels, active channel always visible</div>
-      </div>
-      <div class="toggle" id="focusMode" role="switch" aria-checked="false"></div>
-    </div>
-    <div id="focusSection" class="focus-section hidden">
-      <div class="row">
-        <label>Deep Focus</label>
-        <div class="toggle" id="deepFocus" role="switch" aria-checked="false"></div>
-      </div>
-      <div class="row">
-        <label>Focus theme</label>
-        <select id="focusTheme">
-          <option value="zen">Zen</option>
-          <option value="night">Night</option>
-          <option value="high-contrast">High-Contrast</option>
-        </select>
-      </div>
-      <div class="row">
-        <label>Only notify about me (@handle)</label>
-      </div>
-      <div class="row">
-        <input type="text" id="mentionHandle" placeholder="e.g. jane or jane.doe" />
-      </div>
-    </div>
-
+  <!-- Single Focus Mode control: channels + theme + notify only me -->
+  <div class="row">
+    <label>Focus Mode</label>
+    <div class="toggle" id="focusMode" role="switch" aria-checked="false"></div>
+  </div>
+  <div id="focusSection" class="focus-section hidden">
     <div class="row">
-      <label>Text-To-Speech</label>
-      <div class="toggle" id="ttsEnabled" role="switch" aria-checked="false"></div>
+      <label>Focus theme</label>
+      <select id="focusTheme">
+        <option value="zen">Zen</option>
+        <option value="night">Night</option>
+        <option value="high-contrast">High-Contrast</option>
+      </select>
     </div>
-
     <div class="row">
-      <label>Summarize Workspace</label>
-      <div class="toggle" id="summarizer" role="switch" aria-checked="false"></div>
+      <label>Only notify about me (@handle)</label>
+    </div>
+    <div class="row">
+      <input type="text" id="mentionHandle" placeholder="e.g. jane or jane.doe" />
     </div>
   </div>
 
-  <div class="panel">
-    <div class="panel-title">Privacy</div>
-    <div class="row">
-      <label>Hide Sensitive Data</label>
-      <div class="toggle" id="dataVault" role="switch" aria-checked="false"></div>
-    </div>
+  <div class="row">
+    <label>Text Simplifier</label>
+    <div class="toggle" id="textSimplifier" role="switch" aria-checked="false"></div>
+  </div>
+  <div class="row">
+    <label>Hide Sensitive Data</label>
+    <div class="toggle" id="dataVault" role="switch" aria-checked="false"></div>
+  </div>
+  <div class="row">
+    <label>Text-To-Speech</label>
+    <div class="toggle" id="ttsEnabled" role="switch" aria-checked="false"></div>
+  </div>
+  <div class="row">
+    <label>Summarize Workspace</label>
+    <div class="toggle" id="summarizer" role="switch" aria-checked="false"></div>
+  </div>
+  <div class="row">
+    <label>Thread Prioritizer</label>
+    <div class="toggle" id="threadPrioritizer" role="switch" aria-checked="false"></div>
   </div>
 
-  <button id="analyzeThreads">Analyze All Threads</button>
+  <!-- <button id="analyzeThreads">Analyze All Threads</button> -->
   <script src="popup.js"></script>
 </body>
 </html>

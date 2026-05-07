@@ -22,7 +22,8 @@
         "content/tts.js",
         "content/themes.js",
         "content/dataVault.js",
-        "content/threadAnalyzer.js"
+        "content/threadAnalyzer.js",
+        "content/threadPrioritizer.js"
       ],
       "css": ["styles/focus.css", "styles/themes.css", "styles/dashboard.css"],
       "run_at": "document_idle"

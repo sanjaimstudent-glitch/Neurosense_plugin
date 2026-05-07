@@ -1,27 +1,28 @@
-// NeuroSense popup: Focus Mode (theme + notify only me), other toggles
+﻿// NeuroSense popup: Focus Mode (theme + notify only me), other toggles
 
-const KEYS = ['focusMode', 'deepFocus', 'textSimplifier', 'dataVault', 'theme', 'focusTheme', 'mentionHandle', 'ttsRate', 'ttsPitch', 'ttsVolume', 'summarizer', 'ttsEnabled'];
-
-function setToggleState(id, on) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.classList.toggle('on', !!on);
-  el.setAttribute('aria-checked', !!on);
-}
+const KEYS = ['focusMode', 'textSimplifier', 'dataVault', 'theme', 'focusTheme', 'mentionHandle', 'ttsRate', 'ttsPitch', 'ttsVolume', 'summarizer', 'ttsEnabled','threadPrioritizer'];
 
 function loadSettings() {
   chrome.storage.sync.get(KEYS, (stored) => {
-    setToggleState('focusMode', stored.focusMode);
-    setToggleState('deepFocus', stored.deepFocus !== false);
+    document.getElementById('focusMode').classList.toggle('on', !!stored.focusMode);
+    document.getElementById('focusMode').setAttribute('aria-checked', !!stored.focusMode);
     document.getElementById('focusSection').classList.toggle('hidden', !stored.focusMode);
     const themeEl = document.getElementById('focusTheme');
     if (stored.focusTheme) themeEl.value = stored.focusTheme;
     else if (stored.theme) themeEl.value = stored.theme;
     const handleEl = document.getElementById('mentionHandle');
     if (stored.mentionHandle != null) handleEl.value = stored.mentionHandle || '';
-    setToggleState('dataVault', stored.dataVault);
-    setToggleState('summarizer', stored.summarizer);
-    setToggleState('ttsEnabled', stored.ttsEnabled);
+    document.getElementById('textSimplifier').classList.toggle('on', !!stored.textSimplifier);
+    document.getElementById('textSimplifier').setAttribute('aria-checked', !!stored.textSimplifier);
+    document.getElementById('dataVault').classList.toggle('on', !!stored.dataVault);
+    document.getElementById('dataVault').setAttribute('aria-checked', !!stored.dataVault);
+    document.getElementById('summarizer').classList.toggle('on', !!stored.summarizer);
+    document.getElementById('summarizer').setAttribute('aria-checked', !!stored.summarizer);
+    document.getElementById('ttsEnabled').classList.toggle('on', !!stored.ttsEnabled);
+    document.getElementById('ttsEnabled').setAttribute('aria-checked', !!stored.ttsEnabled);
+    document.getElementById('threadPrioritizer').classList.toggle('on', !!stored.threadPrioritizer);
+    document.getElementById('threadPrioritizer').setAttribute('aria-checked', !!stored.threadPrioritizer);
+
   });
 }
 
@@ -33,51 +34,27 @@ function sendToTab(payload) {
   });
 }
 
-function focusPayload(enabled, deepFocusOverride) {
-  const deepFocusOn = deepFocusOverride !== undefined ? deepFocusOverride : document.getElementById('deepFocus').classList.contains('on');
-  return {
-    action: 'toggleFocus',
-    enabled,
-    theme: document.getElementById('focusTheme').value,
-    mentionHandle: document.getElementById('mentionHandle').value.trim(),
-    deepFocus: deepFocusOn
-  };
-}
-
 function toggle(elId, storageKey) {
   const el = document.getElementById(elId);
   el.addEventListener('click', () => {
-    let on = !el.classList.contains('on');
-
-    if (storageKey === 'focusMode' && on) {
-      setToggleState('deepFocus', true);
-      chrome.storage.sync.set({ focusMode: true, deepFocus: true }, () => {
-        setToggleState('focusMode', true);
-        document.getElementById('focusSection').classList.toggle('hidden', false);
-        sendToTab(focusPayload(true, true));
-      });
-      return;
-    }
-
-    setToggleState(elId, on);
+    const on = el.classList.toggle('on');
+    el.setAttribute('aria-checked', on);
     if (storageKey === 'focusMode') {
       document.getElementById('focusSection').classList.toggle('hidden', !on);
     }
-
     chrome.storage.sync.set({ [storageKey]: on }, () => {
+      const action = storageKey === 'focusMode' ? 'toggleFocus'
+      : storageKey === 'dataVault' ? 'toggleDataVault'
+      : storageKey === 'summarizer' ? 'toggleSummarizer'
+      : storageKey === 'ttsEnabled' ? 'toggleTTS'
+      : storageKey === 'threadPrioritizer' ? 'toggleThreadPrioritizer'
+      : 'toggleSimplifier';
+      const payload = { action, enabled: on };
       if (storageKey === 'focusMode') {
-        sendToTab(focusPayload(on));
-        return;
+        payload.theme = document.getElementById('focusTheme').value;
+        payload.mentionHandle = document.getElementById('mentionHandle').value.trim();
       }
-      if (storageKey === 'deepFocus') {
-        sendToTab({ action: 'toggleDeepFocus', enabled: on });
-        return;
-      }
-      const action = storageKey === 'dataVault' ? 'toggleDataVault'
-        : storageKey === 'summarizer' ? 'toggleSummarizer'
-        : storageKey === 'ttsEnabled' ? 'toggleTTS'
-        : 'toggleSimplifier';
-      sendToTab({ action, enabled: on });
+      sendToTab(payload);
     });
   });
 }
@@ -85,25 +62,24 @@ function toggle(elId, storageKey) {
 document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   toggle('focusMode', 'focusMode');
-  toggle('deepFocus', 'deepFocus');
+  toggle('textSimplifier', 'textSimplifier');
   toggle('dataVault', 'dataVault');
   toggle('summarizer', 'summarizer');
   toggle('ttsEnabled', 'ttsEnabled');
+  toggle('threadPrioritizer', 'threadPrioritizer');
 
   document.getElementById('focusTheme').addEventListener('change', (e) => {
     const theme = e.target.value;
     chrome.storage.sync.set({ focusTheme: theme, theme }, () => {
-      sendToTab({ action: 'setFocusOptions', theme, mentionHandle: document.getElementById('mentionHandle').value.trim(), deepFocus: document.getElementById('deepFocus').classList.contains('on') });
+      sendToTab({ action: 'setFocusOptions', theme, mentionHandle: document.getElementById('mentionHandle').value.trim() });
     });
   });
-
   document.getElementById('mentionHandle').addEventListener('input', (e) => {
     const mentionHandle = e.target.value.trim();
     chrome.storage.sync.set({ mentionHandle }, () => {
-      sendToTab({ action: 'setFocusOptions', theme: document.getElementById('focusTheme').value, mentionHandle, deepFocus: document.getElementById('deepFocus').classList.contains('on') });
+      sendToTab({ action: 'setFocusOptions', theme: document.getElementById('focusTheme').value, mentionHandle });
     });
   });
-
   document.getElementById('mentionHandle').addEventListener('blur', (e) => {
     chrome.storage.sync.set({ mentionHandle: e.target.value.trim() });
   });
