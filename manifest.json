@@ -1,0 +1,37 @@
+﻿{
+  "manifest_version": 3,
+  "name": "NeuroSense",
+  "version": "1.0.0",
+  "description": "Slack enhancements for neurodivergent users: Focus Mode, Text Simplifier, TTS, Themes, Data Vault, Task Analyzer",
+  "permissions": ["storage"],
+  "host_permissions": ["*://*.slack.com/*", "https://api.groq.com/*"],
+  "action": {
+    "default_popup": "popup/popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.slack.com/*"],
+      "js": [
+        "content/content.js",
+        "content/focusMode.js",
+        "content/simplifier.js",
+        "content/summarizer.js",
+        "content/tts.js",
+        "content/themes.js",
+        "content/dataVault.js",
+        "content/threadAnalyzer.js"
+      ],
+      "css": ["styles/focus.css", "styles/themes.css", "styles/dashboard.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["styles/*.css"],
+      "matches": ["*://*.slack.com/*"]
+    }
+  ]
+}

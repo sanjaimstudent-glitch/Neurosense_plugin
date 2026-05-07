@@ -1,0 +1,36 @@
+/* NeuroSense Sensory Themes - applied via body class */
+
+/* Zen: easier reading, breathing room */
+body.neurosense-theme-zen,
+body.neurosense-theme-zen .p-workspace,
+body.neurosense-theme-zen [data-qa="message_content"] {
+  font-size: 18px !important;
+  line-height: 1.8 !important;
+}
+
+body.neurosense-theme-zen .c-virtual_list__scroll_container {
+  color: #4a5568 !important;
+}
+
+/* Night: inverted, true black */
+body.neurosense-theme-night .p-workspace__primary_view,
+body.neurosense-theme-night .p-workspace__secondary_view {
+  filter: invert(1) hue-rotate(180deg) !important;
+  background: #000 !important;
+}
+
+body.neurosense-theme-night img {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+/* High-Contrast: no gradients/shadows */
+body.neurosense-theme-high-contrast,
+body.neurosense-theme-high-contrast * {
+  filter: contrast(1.5) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+body.neurosense-theme-high-contrast [style*="gradient"] {
+  background: #fff !important;
+}
