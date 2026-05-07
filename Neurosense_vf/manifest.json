@@ -1,8 +1,8 @@
-{
+﻿{
   "manifest_version": 3,
   "name": "NeuroSense",
   "version": "1.0.0",
-  "description": "Slack enhancements for neurodivergent users: Focus Mode, TTS, Themes, Data Vault, Summary, and Task Breakdown",
+  "description": "Slack enhancements for neurodivergent users: Focus Mode, Text Simplifier, TTS, Themes, Data Vault, Task Analyzer",
   "permissions": ["storage"],
   "host_permissions": ["*://*.slack.com/*", "https://api.groq.com/*"],
   "action": {

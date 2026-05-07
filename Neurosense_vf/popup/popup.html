@@ -1,0 +1,139 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>NeuroSense</title>
+  <style>
+    body {
+      width: 300px;
+      padding: 12px 16px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      margin: 0;
+      color: #1d1c1d;
+      background: #f8f8f8;
+    }
+    h1 {
+      font-size: 16px;
+      margin: 0 0 12px 0;
+      color: #1264a3;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    label { flex: 1; }
+    select {
+      width: 120px;
+      padding: 4px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    input[type="text"] {
+      width: 120px;
+      padding: 4px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 8px 12px;
+      margin-top: 8px;
+      background: #1264a3;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover { background: #0b4c8c; }
+    .toggle {
+      width: 40px;
+      height: 22px;
+      border-radius: 11px;
+      background: #ccc;
+      position: relative;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .toggle.on { background: #1264a3; }
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: white;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s;
+    }
+    .toggle.on::after { transform: translateX(18px); }
+    .focus-section {
+      margin-left: 0;
+      margin-top: 6px;
+      margin-bottom: 12px;
+      padding: 8px 10px;
+      background: #e8f4f8;
+      border-radius: 6px;
+      border: 1px solid #b8d4e3;
+    }
+    .focus-section .row { margin-bottom: 8px; }
+    .focus-section .row:last-child { margin-bottom: 0; }
+    .focus-section label { font-size: 13px; color: #1d1c1d; }
+    .focus-section.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>NeuroSense</h1>
+
+  <!-- Single Focus Mode control: channels + theme + notify only me -->
+  <div class="row">
+    <label>Focus Mode</label>
+    <div class="toggle" id="focusMode" role="switch" aria-checked="false"></div>
+  </div>
+  <div id="focusSection" class="focus-section hidden">
+    <div class="row">
+      <label>Focus theme</label>
+      <select id="focusTheme">
+        <option value="zen">Zen</option>
+        <option value="night">Night</option>
+        <option value="high-contrast">High-Contrast</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Only notify about me (@handle)</label>
+    </div>
+    <div class="row">
+      <input type="text" id="mentionHandle" placeholder="e.g. jane or jane.doe" />
+    </div>
+  </div>
+
+  <div class="row">
+    <label>Text Simplifier</label>
+    <div class="toggle" id="textSimplifier" role="switch" aria-checked="false"></div>
+  </div>
+  <div class="row">
+    <label>Hide Sensitive Data</label>
+    <div class="toggle" id="dataVault" role="switch" aria-checked="false"></div>
+  </div>
+  <div class="row">
+    <label>Text-To-Speech</label>
+    <div class="toggle" id="ttsEnabled" role="switch" aria-checked="false"></div>
+  </div>
+  <div class="row">
+    <label>Summarize Workspace</label>
+    <div class="toggle" id="summarizer" role="switch" aria-checked="false"></div>
+  </div>
+  <div class="row">
+    <label>Thread Prioritizer</label>
+    <div class="toggle" id="threadPrioritizer" role="switch" aria-checked="false"></div>
+  </div>
+
+  <!-- <button id="analyzeThreads">Analyze All Threads</button> -->
+  <script src="popup.js"></script>
+</body>
+</html>

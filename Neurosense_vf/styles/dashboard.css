@@ -1,0 +1,46 @@
+/* NeuroSense Task Dashboard */
+#neurosense-dashboard {
+  position: fixed !important;
+  top: 60px !important;
+  right: 16px !important;
+  width: 280px !important;
+  max-height: 70vh !important;
+  overflow-y: auto !important;
+  background: #fff !important;
+  border: 2px solid #1d1c1d !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+  z-index: 2147483647 !important;
+  font-family: system-ui, sans-serif !important;
+  font-size: 14px !important;
+  padding: 12px !important;
+}
+
+#neurosense-dashboard h3 {
+  margin: 0 0 8px 0 !important;
+  font-size: 16px !important;
+}
+
+#neurosense-dashboard ul {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#neurosense-dashboard li {
+  padding: 6px 8px !important;
+  margin-bottom: 4px !important;
+  border-radius: 4px !important;
+  border-left: 4px solid #ccc !important;
+}
+
+#neurosense-dashboard .high { border-left-color: #e01e5a !important; }
+#neurosense-dashboard .medium { border-left-color: #ecb22e !important; }
+#neurosense-dashboard .low { border-left-color: #2eb886 !important; }
+
+#neurosense-dashboard .close-btn {
+  float: right !important;
+  cursor: pointer !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+}

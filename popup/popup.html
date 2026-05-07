@@ -1,63 +1,98 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <title>NeuroSense</title>
   <style>
     body {
-      width: 300px;
-      padding: 12px 16px;
-      font-family: system-ui, -apple-system, sans-serif;
+      width: 320px;
+      padding: 14px 16px;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
       font-size: 14px;
       margin: 0;
       color: #1d1c1d;
-      background: #f8f8f8;
+      background: linear-gradient(180deg, #f7fbff 0%, #eef4fb 100%);
     }
     h1 {
-      font-size: 16px;
+      font-size: 17px;
       margin: 0 0 12px 0;
       color: #1264a3;
+    }
+    .panel {
+      margin-bottom: 12px;
+      padding: 12px;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #d8e3eb;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(18, 100, 163, 0.08);
+    }
+    .panel-title {
+      margin: 0 0 10px 0;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #5b6b79;
     }
     .row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin-bottom: 10px;
+      gap: 12px;
+    }
+    .row:last-child {
+      margin-bottom: 0;
+    }
+    .focus-row {
+      align-items: flex-start;
+    }
+    .focus-copy {
+      flex: 1;
+    }
+    .focus-meta {
+      margin-top: 2px;
+      font-size: 11px;
+      color: #6b7d8a;
     }
     label { flex: 1; }
     select {
-      width: 120px;
+      width: 126px;
       padding: 4px 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
+      border: 1px solid #cbd8e2;
+      border-radius: 6px;
+      background: #fff;
     }
     input[type="text"] {
-      width: 120px;
+      width: 126px;
       padding: 4px 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
+      border: 1px solid #cbd8e2;
+      border-radius: 6px;
       box-sizing: border-box;
+      background: #fff;
     }
     button {
       width: 100%;
-      padding: 8px 12px;
+      padding: 9px 12px;
       margin-top: 8px;
-      background: #1264a3;
+      background: linear-gradient(135deg, #1264a3, #0b4c8c);
       color: white;
       border: none;
-      border-radius: 4px;
+      border-radius: 8px;
       cursor: pointer;
       font-size: 13px;
+      box-shadow: 0 8px 16px rgba(18, 100, 163, 0.16);
     }
-    button:hover { background: #0b4c8c; }
+    button:hover { filter: brightness(1.04); }
     .toggle {
       width: 40px;
       height: 22px;
       border-radius: 11px;
-      background: #ccc;
+      background: #c8d2db;
       position: relative;
       cursor: pointer;
       flex-shrink: 0;
+      transition: background 0.2s ease;
     }
     .toggle.on { background: #1264a3; }
     .toggle::after {
@@ -69,71 +104,273 @@
       background: white;
       top: 2px;
       left: 2px;
-      transition: transform 0.2s;
+      transition: transform 0.2s ease;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.18);
     }
     .toggle.on::after { transform: translateX(18px); }
     .focus-section {
-      margin-left: 0;
-      margin-top: 6px;
-      margin-bottom: 12px;
+      margin-top: 8px;
       padding: 8px 10px;
-      background: #e8f4f8;
-      border-radius: 6px;
-      border: 1px solid #b8d4e3;
+      background: #eef7fb;
+      border-radius: 8px;
+      border: 1px solid #c8dfea;
     }
     .focus-section .row { margin-bottom: 8px; }
     .focus-section .row:last-child { margin-bottom: 0; }
     .focus-section label { font-size: 13px; color: #1d1c1d; }
     .focus-section.hidden { display: none; }
+    .stats-shell {
+      background: linear-gradient(145deg, #0f1f34 0%, #173151 55%, #1e4c77 100%);
+      color: #eef7ff;
+      position: relative;
+      overflow: hidden;
+    }
+    .stats-shell::after {
+      content: '';
+      position: absolute;
+      inset: auto -40px -60px auto;
+      width: 160px;
+      height: 160px;
+      background: radial-gradient(circle, rgba(94, 234, 212, 0.22), transparent 65%);
+      pointer-events: none;
+    }
+    .stats-hero {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .stats-kicker {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #9fd6ff;
+      margin-bottom: 4px;
+    }
+    .stats-title {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 4px;
+    }
+    .stats-subtitle {
+      font-size: 12px;
+      color: #c4daee;
+      line-height: 1.4;
+    }
+    .stats-level {
+      min-width: 64px;
+      padding: 10px 8px;
+      border-radius: 14px;
+      text-align: center;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(8px);
+    }
+    .stats-level strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1;
+    }
+    .stats-level span {
+      font-size: 11px;
+      color: #c4daee;
+    }
+    .stats-progress {
+      position: relative;
+      z-index: 1;
+      margin-bottom: 12px;
+    }
+    .stats-progress-copy {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #c4daee;
+      margin-bottom: 6px;
+    }
+    .stats-progress-track {
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      overflow: hidden;
+    }
+    .stats-progress-bar {
+      height: 100%;
+      width: 0%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #7dd3fc, #5eead4);
+      transition: width 0.24s ease;
+    }
+    .stats-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .stat-chip {
+      padding: 10px 8px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .stat-chip strong {
+      display: block;
+      font-size: 15px;
+      color: #ffffff;
+      margin-bottom: 3px;
+    }
+    .stat-chip span {
+      font-size: 11px;
+      color: #c4daee;
+    }
+    .stats-badges-title {
+      position: relative;
+      z-index: 1;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #9fd6ff;
+      margin-bottom: 8px;
+    }
+    .badge-list {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .badge-pill {
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.14);
+      font-size: 11px;
+      color: #eff9ff;
+    }
+    .badge-empty {
+      font-size: 12px;
+      color: #c4daee;
+    }
+    .action-button {
+      margin-top: 0;
+      background: linear-gradient(135deg, #1d7f6e, #156c5d);
+      box-shadow: 0 8px 16px rgba(21, 108, 93, 0.16);
+    }
   </style>
 </head>
 <body>
   <h1>NeuroSense</h1>
 
-  <!-- Single Focus Mode control: channels + theme + notify only me -->
-  <div class="row">
-    <label>Focus Mode</label>
-    <div class="toggle" id="focusMode" role="switch" aria-checked="false"></div>
-  </div>
-  <div id="focusSection" class="focus-section hidden">
-    <div class="row">
-      <label>Focus theme</label>
-      <select id="focusTheme">
-        <option value="zen">Zen</option>
-        <option value="night">Night</option>
-        <option value="high-contrast">High-Contrast</option>
-      </select>
+  <div class="panel stats-shell">
+    <div class="stats-hero">
+      <div>
+        <div class="stats-kicker">Focus Quest</div>
+        <div class="stats-title" id="focusQuestTitle">Signal Garden</div>
+        <div class="stats-subtitle" id="focusQuestSubtitle">Your calm workspace stats will bloom here once you finish a focus session.</div>
+      </div>
+      <div class="stats-level">
+        <strong id="focusLevel">1</strong>
+        <span>Level</span>
+      </div>
     </div>
-    <div class="row">
-      <label>Only notify about me (@handle)</label>
+    <div class="stats-progress">
+      <div class="stats-progress-copy">
+        <span id="focusProgressLabel">0 / 120 points to next level</span>
+        <span id="focusStreak">0 day streak</span>
+      </div>
+      <div class="stats-progress-track">
+        <div class="stats-progress-bar" id="focusProgressBar"></div>
+      </div>
     </div>
-    <div class="row">
-      <input type="text" id="mentionHandle" placeholder="e.g. jane or jane.doe" />
+    <div class="stats-grid">
+      <div class="stat-chip">
+        <strong id="todayMinutes">0m</strong>
+        <span>Today</span>
+      </div>
+      <div class="stat-chip">
+        <strong id="todaySessions">0</strong>
+        <span>Sessions</span>
+      </div>
+      <div class="stat-chip">
+        <strong id="todayShield">0</strong>
+        <span>Hidden noise</span>
+      </div>
+    </div>
+    <div class="stats-badges-title">Recent badges</div>
+    <div class="badge-list" id="focusBadgeList">
+      <span class="badge-empty">No badges yet</span>
     </div>
   </div>
 
-  <div class="row">
-    <label>Text Simplifier</label>
-    <div class="toggle" id="textSimplifier" role="switch" aria-checked="false"></div>
-  </div>
-  <div class="row">
-    <label>Hide Sensitive Data</label>
-    <div class="toggle" id="dataVault" role="switch" aria-checked="false"></div>
-  </div>
-  <div class="row">
-    <label>Text-To-Speech</label>
-    <div class="toggle" id="ttsEnabled" role="switch" aria-checked="false"></div>
-  </div>
-  <div class="row">
-    <label>Summarize Workspace</label>
-    <div class="toggle" id="summarizer" role="switch" aria-checked="false"></div>
-  </div>
-  <div class="row">
-    <label>Thread Prioritizer</label>
-    <div class="toggle" id="threadPrioritizer" role="switch" aria-checked="false"></div>
+  <div class="panel">
+    <div class="panel-title">Focus Control Panel</div>
+
+    <div class="row focus-row">
+      <div class="focus-copy">
+        <label>Focus Mode</label>
+        <div class="focus-meta">3 channels, active channel always visible</div>
+      </div>
+      <div class="toggle" id="focusMode" role="switch" aria-checked="false"></div>
+    </div>
+    <div id="focusSection" class="focus-section hidden">
+      <div class="row">
+        <label>Deep Focus</label>
+        <div class="toggle" id="deepFocus" role="switch" aria-checked="false"></div>
+      </div>
+      <div class="row">
+        <label>Focus theme</label>
+        <select id="focusTheme">
+          <option value="zen">Zen</option>
+          <option value="night">Night</option>
+          <option value="high-contrast">High-Contrast</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Only notify about me (@handle)</label>
+      </div>
+      <div class="row">
+        <input type="text" id="mentionHandle" placeholder="e.g. jane or jane.doe" />
+      </div>
+    </div>
+
+    <div class="row">
+      <label>Text-To-Speech</label>
+      <div class="toggle" id="ttsEnabled" role="switch" aria-checked="false"></div>
+    </div>
+
+    <div class="row">
+      <label>Summarize Workspace</label>
+      <div class="toggle" id="summarizer" role="switch" aria-checked="false"></div>
+    </div>
+
+    <div class="row">
+      <div class="focus-copy">
+        <label>Task Breakdown</label>
+        <div class="focus-meta">AI-sorted HOT, WARM and COLD tasks</div>
+      </div>
+      <div class="toggle" id="threadPrioritizer" role="switch" aria-checked="false"></div>
+    </div>
   </div>
 
-  <!-- <button id="analyzeThreads">Analyze All Threads</button> -->
+  <div class="panel">
+    <div class="panel-title">Privacy</div>
+    <div class="row">
+      <label>Hide Sensitive Data</label>
+      <div class="toggle" id="dataVault" role="switch" aria-checked="false"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">AI Actions</div>
+    <button id="openTaskBreakdown" class="action-button">Open Task Breakdown</button>
+  </div>
+
+  <button id="analyzeThreads">Analyze All Threads</button>
   <script src="popup.js"></script>
 </body>
 </html>

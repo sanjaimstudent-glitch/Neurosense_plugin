@@ -1,683 +1,673 @@
-// NeuroSense: Smart Thread Prioritizer — AI tags threads 🔴🟡🟢 by urgency + due date
+// NeuroSense Task Breakdown: dedicated gamified task bar with vertical progress
 
 (function () {
   const NS = window.neurosense;
   if (!NS) return;
 
-  const GROQ_API_KEY = 'Your_api_key';
+  const GROQ_API_KEY = 'your_api_key';
   const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
   const MESSAGE_SELECTOR = '[data-qa="message_content"]';
+  const MAX_MESSAGES = 60;
+  const STREAK_KEY = 'neurosense_task_breakdown_stats';
+  const DAY_MS = 24 * 60 * 60 * 1000;
 
   let enabled = false;
-  let panel = null;
   let mentionHandle = '';
+  let panel = null;
+  let tasks = [];
+  let completed = new Set();
+  let completionCelebrated = false;
 
-  chrome.storage.sync.get({ mentionHandle: '' }, (s) => { mentionHandle = s.mentionHandle || ''; });
+  chrome.storage.sync.get({ mentionHandle: '' }, (stored) => {
+    mentionHandle = (stored.mentionHandle || '').trim();
+  });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync') return;
+    if (changes.mentionHandle) mentionHandle = (changes.mentionHandle.newValue || '').trim();
+  });
+
+  function todayKey() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function yesterdayKey() {
+    return new Date(Date.now() - DAY_MS).toISOString().slice(0, 10);
+  }
+
+  function getDefaultTaskStats() {
+    return { streak: 0, lastCompletedDate: '', totalBoardsCleared: 0 };
+  }
 
   function collectThreads() {
     return Array.from(document.querySelectorAll(MESSAGE_SELECTOR))
-      .map(m => (m.textContent || '').trim())
-      .filter(t => t.length > 20)
-      .slice(-40);
+      .map((message) => (message.textContent || '').trim())
+      .filter((text) => text.length > 24)
+      .slice(-MAX_MESSAGES);
+  }
+
+  function normalizeTask(task) {
+    if (!task || typeof task !== 'object') return null;
+    const priority = String(task.priority || 'COLD').toUpperCase();
+    const safePriority = ['HOT', 'WARM', 'COLD'].includes(priority) ? priority : 'COLD';
+    return {
+      priority: safePriority,
+      title: String(task.title || 'Untitled task').trim().slice(0, 80),
+      due: String(task.due || 'No date').trim().slice(0, 40),
+      from: String(task.from || 'Team').trim().slice(0, 40),
+      snippet: String(task.snippet || '').trim().slice(0, 90),
+      why: String(task.why || '').trim().slice(0, 120)
+    };
   }
 
   async function callGroq(threads, handle) {
-    const combined = threads.map((t, i) => `[MSG ${i + 1}]: ${t}`).join('\n');
-    const prompt = `You are a workplace productivity assistant analyzing Slack messages.
-User's name/handle: "${handle || 'unknown'}"
+    const combined = threads.map((thread, index) => `[MSG ${index + 1}] ${thread}`).join('\n');
+    const prompt = `You are an executive task breakdown assistant for Slack.
+User handle: "${handle || 'unknown'}"
 Messages:
 ${combined}
-Analyze each message and extract TASKS that need attention. For each task:
-- Assign priority: HOT, WARM, or COLD
-  HOT = mentions the user by name OR has urgent deadline (today/ASAP/EOD/tomorrow)
-  WARM = team decision pending, needs input, has a deadline within a week
-  COLD = FYI only, no action needed, informational
-- Extract due date if mentioned (or write "No date")
-- Write a short task title (max 8 words)
-- Write who assigned it if clear (or "Team")
-Return ONLY a valid JSON array, no explanation, no markdown:
-[{"priority":"HOT","title":"Review Q3 report by EOD","due":"Today","from":"Sarah","snippet":"brief original message snippet max 60 chars"}]
-Return maximum 8 most important tasks. If no tasks found, return empty array [].`;
+
+Extract the most important actionable tasks from these messages.
+For each task return:
+- priority: HOT, WARM, or COLD
+- title: short and clear, max 8 words
+- due: due date or timing, otherwise "No date"
+- from: person or team name if clear, otherwise "Team"
+- snippet: short supporting quote, max 60 chars
+- why: one short sentence explaining why this matters
+
+Rules:
+- HOT = direct mention, urgent words, production issue, deadline today/tomorrow/EOD/ASAP
+- WARM = decision pending, review needed, deadline within a week
+- COLD = useful follow-up or lower-pressure item
+- Return only a valid JSON array
+- Maximum 8 tasks
+- If there are no actionable tasks, return []`;
 
     const response = await fetch(GROQ_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`
+      },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.2,
-        max_tokens: 800
+        max_tokens: 900
       })
     });
 
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err?.error?.message || 'Groq API error');
+      let message = 'Groq API error';
+      try {
+        const error = await response.json();
+        message = error && error.error && error.error.message ? error.error.message : message;
+      } catch (_) {}
+      throw new Error(message);
     }
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '[]';
-    const clean = text.replace(/```json|```/g, '').trim();
-    try { return JSON.parse(clean); } catch { return []; }
-  }
 
-  const PRIORITY = {
-    HOT:  { emoji: '🔴', label: 'HOT',  color: '#ff4444' },
-    WARM: { emoji: '🟡', label: 'WARM', color: '#f59e0b' },
-    COLD: { emoji: '🟢', label: 'COLD', color: '#22c55e' }
-  };
+    const data = await response.json();
+    const raw = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content || '[]' : '[]';
+    const clean = raw.replace(/```json|```/g, '').trim();
+
+    try {
+      const parsed = JSON.parse(clean);
+      return Array.isArray(parsed) ? parsed.map(normalizeTask).filter(Boolean).slice(0, 8) : [];
+    } catch (_) {
+      return [];
+    }
+  }
 
   function createPanel() {
     if (panel) return;
+
     panel = document.createElement('div');
-    panel.id = 'ns-prioritizer-panel';
+    panel.id = 'ns-task-breakdown-panel';
     panel.innerHTML = `
       <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');
-
-        #ns-prioritizer-panel {
+        #ns-task-breakdown-panel {
           position: fixed;
-          top: 60px;
-          right: 0;
-          width: 332px;
-          height: calc(100vh - 60px);
-          background: #080b10;
-          border-left: 1px solid #0e1420;
-          z-index: 99998;
+          top: 58px;
+          right: 18px;
+          width: 372px;
+          max-height: calc(100vh - 86px);
           display: flex;
-          flex-direction: row;
-          font-family: 'DM Sans', sans-serif;
-          box-shadow: -8px 0 40px rgba(0,0,0,0.6);
-          animation: ns-slide-in 0.25s cubic-bezier(0.16,1,0.3,1);
+          background: linear-gradient(180deg, #0d1220 0%, #0a0f18 100%);
+          border: 1px solid #1e2940;
+          border-radius: 20px;
+          box-shadow: 0 28px 70px rgba(3, 8, 20, 0.58);
           overflow: hidden;
+          z-index: 100000;
+          color: #e7eff9;
+          font-family: 'Segoe UI', system-ui, sans-serif;
+          animation: ns-task-bar-in 0.24s ease;
         }
-        @keyframes ns-slide-in {
-          from { transform: translateX(100%); opacity: 0; }
-          to   { transform: translateX(0); opacity: 1; }
+        @keyframes ns-task-bar-in {
+          from { transform: translateX(24px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
         }
-
-        /* ---- VERTICAL PROGRESS BAR ---- */
-        #ns-vbar-wrap {
-          width: 14px;
-          height: 100%;
-          background: #0a0d12;
-          border-right: 1px solid #0e1420;
-          flex-shrink: 0;
+        #ns-task-breakdown-panel * { box-sizing: border-box; }
+        .ns-track-rail {
+          width: 56px;
+          padding: 18px 10px;
+          border-right: 1px solid #162033;
+          background: linear-gradient(180deg, rgba(22, 31, 49, 0.94), rgba(13, 18, 32, 0.98));
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: flex-start;
+          gap: 14px;
           position: relative;
-          overflow: visible;
         }
-        #ns-vbar-fill {
+        .ns-track-stars {
+          font-size: 14px;
+          color: #ffe58f;
+          letter-spacing: 1px;
+          text-shadow: 0 0 10px rgba(255, 229, 143, 0.6);
+          animation: ns-star-spark 1.8s ease-in-out infinite;
+        }
+        @keyframes ns-star-spark {
+          0%, 100% { opacity: 0.45; transform: scale(0.95); }
+          50% { opacity: 1; transform: scale(1.08); }
+        }
+        .ns-track-shell {
+          position: relative;
+          width: 16px;
+          flex: 1;
+          min-height: 280px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.06);
+          overflow: hidden;
+          border: 1px solid rgba(255,255,255,0.06);
+        }
+        .ns-track-fill {
           position: absolute;
           bottom: 0;
           left: 0;
           right: 0;
           height: 0%;
-          background: linear-gradient(to top, #4ade80 0%, #22d3ee 60%, #a78bfa 100%);
-          transition: height 0.9s cubic-bezier(0.4,0,0.2,1);
-          border-radius: 3px 3px 0 0;
+          background: linear-gradient(180deg, #8b5cf6 0%, #22d3ee 58%, #4ade80 100%);
+          transition: height 0.5s ease;
+          box-shadow: 0 0 18px rgba(34, 211, 238, 0.28);
         }
-        #ns-vbar-fill.glowing {
-          box-shadow: 2px 0 14px rgba(74,222,128,0.45),
-                     -2px 0 14px rgba(74,222,128,0.2);
-        }
-        #ns-vbar-fill::before {
-          content: '';
-          position: absolute;
-          top: 0; left: 0; right: 0;
-          height: 30px;
-          background: linear-gradient(to bottom, rgba(255,255,255,0.25), transparent);
-          border-radius: 3px 3px 0 0;
-          animation: ns-vbar-shimmer 2s ease-in-out infinite;
-        }
-        @keyframes ns-vbar-shimmer {
-          0%, 100% { opacity: 0.3; }
-          50%      { opacity: 1; }
-        }
-
-        /* ---- STAR AT PEEK ---- */
-        #ns-vbar-star {
+        .ns-track-head {
           position: absolute;
           left: 50%;
-          transform: translateX(-50%);
-          width: 32px;
-          height: 32px;
-          pointer-events: none;
-          display: none;
-          z-index: 10;
-          transition: bottom 0.9s cubic-bezier(0.4,0,0.2,1);
+          bottom: 0;
+          width: 28px;
+          height: 28px;
+          margin-left: -14px;
+          border-radius: 50%;
+          background: radial-gradient(circle at 35% 35%, #ffffff, #fde68a 42%, #f59e0b 100%);
+          box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.14), 0 0 20px rgba(250, 204, 21, 0.55);
+          transition: bottom 0.5s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #402400;
+          font-size: 13px;
+          font-weight: 900;
         }
-        #ns-vbar-star.active { display: block; }
-
-        #ns-vbar-star-inner {
-          width: 26px;
-          height: 26px;
-          margin: 0;
-          background: none;
-          animation: ns-star-pulse 1.6s ease-in-out infinite;
-          filter: drop-shadow(0 0 6px #4ade80)
-                  drop-shadow(0 0 14px #22d3ee)
-                  drop-shadow(0 0 22px rgba(74,222,128,0.6));
-        }
-        @keyframes ns-star-pulse {
-          0%, 100% {
-            transform: scale(1) rotate(0deg);
-            opacity: 1;
-          }
-          25% {
-            transform: scale(1.3) rotate(15deg);
-            opacity: 0.9;
-          }
-          50% {
-            transform: scale(1.1) rotate(-10deg);
-            opacity: 1;
-          }
-          75% {
-            transform: scale(1.25) rotate(8deg);
-            opacity: 0.85;
-          }
-        }
-
-        #ns-vbar-star-rays {
-          position: absolute;
-          top: 50%; left: 50%;
-          width: 28px; height: 28px;
-          margin: -14px 0 0 -14px;
-          animation: ns-star-rays-spin 3s linear infinite;
-        }
-        #ns-vbar-star-rays::before,
-        #ns-vbar-star-rays::after {
+        .ns-track-head::after {
           content: '';
           position: absolute;
-          top: 50%; left: 50%;
-          width: 2px; height: 10px;
-          background: rgba(74,222,128,0.6);
-          border-radius: 1px;
-          transform-origin: 1px 0;
+          inset: -7px;
+          border-radius: 50%;
+          border: 1px solid rgba(250, 204, 21, 0.2);
+          animation: ns-track-ping 1.4s ease-out infinite;
         }
-        #ns-vbar-star-rays::before {
-          transform: translate(-50%, -100%) rotate(0deg);
-          box-shadow:
-            0 0 0 0 transparent,
-            14px 0 0 -0.5px rgba(74,222,128,0.4),
-            -14px 0 0 -0.5px rgba(74,222,128,0.4),
-            0 14px 0 -0.5px rgba(34,211,238,0.4),
-            0 -14px 0 -0.5px rgba(34,211,238,0.4);
+        @keyframes ns-track-ping {
+          0% { opacity: 0.7; transform: scale(0.8); }
+          100% { opacity: 0; transform: scale(1.55); }
         }
-        #ns-vbar-star-rays::after {
-          transform: translate(-50%, -100%) rotate(45deg);
-          background: rgba(167,139,250,0.5);
-          box-shadow:
-            10px 10px 0 -0.5px rgba(167,139,250,0.3),
-            -10px 10px 0 -0.5px rgba(167,139,250,0.3),
-            10px -10px 0 -0.5px rgba(167,139,250,0.3),
-            -10px -10px 0 -0.5px rgba(167,139,250,0.3);
+        .ns-track-note {
+          font-size: 10px;
+          line-height: 1.4;
+          text-align: center;
+          color: #9ab1ce;
         }
-        @keyframes ns-star-rays-spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-
-        /* ---- MAIN CONTENT ---- */
-        #ns-panel-content {
+        .ns-task-main {
           flex: 1;
+          min-width: 0;
           display: flex;
           flex-direction: column;
-          overflow: hidden;
-          min-width: 0;
         }
-
-        #ns-p-header {
+        .ns-task-head {
           padding: 16px 16px 12px;
-          border-bottom: 1px solid #0e1420;
-          background: #080b10;
-          flex-shrink: 0;
+          border-bottom: 1px solid #162133;
+          background: linear-gradient(135deg, rgba(86, 120, 255, 0.14), rgba(30, 182, 141, 0.08));
         }
-        #ns-p-title-row {
-          display: flex; align-items: center;
-          justify-content: space-between; margin-bottom: 12px;
-        }
-        #ns-p-title {
-          font-size: 13px; font-weight: 700; color: #f1f5f9;
-          letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px;
-        }
-        #ns-p-title .ns-logo {
-          width: 20px; height: 20px;
-          background: linear-gradient(135deg, #6366f1, #8b5cf6);
-          border-radius: 5px;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 11px;
-        }
-        #ns-p-close {
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 6px; color: #64748b; font-size: 13px;
-          cursor: pointer; width: 26px; height: 26px;
-          display: flex; align-items: center; justify-content: center;
-          transition: all 0.15s;
-        }
-        #ns-p-close:hover { background: rgba(255,255,255,0.1); color: #e2e8f0; }
-
-        #ns-p-counts { display: flex; gap: 8px; margin-bottom: 10px; }
-        .ns-count-pill {
-          display: flex; align-items: center; gap: 5px;
-          padding: 4px 8px; border-radius: 20px; font-size: 11px;
-          font-weight: 600; font-family: 'JetBrains Mono', monospace;
-          border: 1px solid; transition: transform 0.15s;
-        }
-        .ns-count-pill:hover { transform: scale(1.05); }
-        .ns-count-pill.hot  { color: #ff4444; background: rgba(255,68,68,0.08);  border-color: rgba(255,68,68,0.2); }
-        .ns-count-pill.warm { color: #f59e0b; background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.2); }
-        .ns-count-pill.cold { color: #22c55e; background: rgba(34,197,94,0.08);  border-color: rgba(34,197,94,0.2); }
-
-        #ns-p-filter { display: flex; gap: 4px; }
-        .ns-filter-btn {
-          flex: 1; padding: 5px 0;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.06);
-          border-radius: 6px; color: #64748b; font-size: 11px;
-          font-weight: 600; cursor: pointer; transition: all 0.15s;
-          font-family: 'DM Sans', sans-serif; letter-spacing: 0.3px;
-        }
-        .ns-filter-btn:hover { background: rgba(255,255,255,0.08); color: #94a3b8; }
-        .ns-filter-btn.active { background: rgba(99,102,241,0.15); border-color: rgba(99,102,241,0.3); color: #a5b4fc; }
-
-        /* ---- PROGRESS TEXT ROW ---- */
-        #ns-progress-row {
-          display: flex; align-items: center;
+        .ns-task-title-row {
+          display: flex;
+          align-items: center;
           justify-content: space-between;
-          padding: 8px 16px;
-          border-bottom: 1px solid #0e1420;
-          flex-shrink: 0;
+          gap: 12px;
+          margin-bottom: 10px;
         }
-        #ns-progress-label { font-size: 11px; color: #334155; font-family: 'JetBrains Mono', monospace; }
-        #ns-progress-pct   { font-size: 12px; font-weight: 700; color: #94a3b8; font-family: 'JetBrains Mono', monospace; transition: color 0.4s ease; }
-
-        #ns-done-msg {
-          display: none; align-items: center; gap: 5px;
-          font-size: 11px; color: #4ade80; font-family: 'DM Sans', sans-serif;
-          font-weight: 500; padding: 6px 16px;
-          background: rgba(74,222,128,0.06);
-          border-bottom: 1px solid rgba(74,222,128,0.12);
-          opacity: 0; transition: opacity 0.8s ease; flex-shrink: 0;
+        .ns-task-title-wrap {
+          display: flex;
+          align-items: center;
+          gap: 10px;
         }
-        #ns-done-msg.visible { display: flex; opacity: 1; }
-
-        /* ---- BODY ---- */
-        #ns-p-body {
-          flex: 1; overflow-y: auto; padding: 12px;
-          scrollbar-width: thin; scrollbar-color: #1e2130 transparent;
+        .ns-task-mark {
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, #6f7dff, #34d399);
+          color: #08111f;
+          font-weight: 800;
+          font-size: 13px;
         }
-        #ns-p-body::-webkit-scrollbar { width: 3px; }
-        #ns-p-body::-webkit-scrollbar-thumb { background: #1e2130; border-radius: 3px; }
-
-        /* ---- TASK CARDS ---- */
+        .ns-task-title {
+          font-size: 14px;
+          font-weight: 700;
+          color: #f8fbff;
+        }
+        .ns-task-subtitle {
+          font-size: 11px;
+          color: #b4c3d8;
+          margin-top: 2px;
+        }
+        .ns-task-close {
+          width: 30px;
+          height: 30px;
+          border-radius: 9px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.05);
+          color: #9db0ca;
+          cursor: pointer;
+        }
+        .ns-task-close:hover { background: rgba(255,255,255,0.1); color: #f1f5fb; }
+        .ns-task-progress-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          font-size: 11px;
+          color: #b4c3d8;
+        }
+        .ns-task-progress-row strong {
+          color: #f8fbff;
+          font-size: 12px;
+        }
+        .ns-task-complete-banner {
+          margin-top: 10px;
+          padding: 10px 12px;
+          border-radius: 12px;
+          background: rgba(74, 222, 128, 0.12);
+          border: 1px solid rgba(74, 222, 128, 0.18);
+          color: #dcffe9;
+          font-size: 12px;
+          line-height: 1.5;
+          display: none;
+        }
+        .ns-task-complete-banner.visible { display: block; }
+        .ns-task-body {
+          padding: 12px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .ns-task-body::-webkit-scrollbar { width: 5px; }
+        .ns-task-body::-webkit-scrollbar-thumb { background: #21314d; border-radius: 999px; }
         .ns-task-card {
-          background: #0c1018; border: 1px solid #0e1420;
-          border-radius: 10px; padding: 12px 13px; margin-bottom: 8px;
-          cursor: pointer; position: relative; overflow: hidden;
-          transition: all 0.5s ease, opacity 0.6s ease;
+          position: relative;
+          border: 1px solid #162133;
+          border-left-width: 4px;
+          border-radius: 14px;
+          background: rgba(255,255,255,0.03);
+          padding: 12px 12px 12px 14px;
+          transition: transform 0.16s ease, opacity 0.16s ease, border-color 0.16s ease;
         }
-        .ns-task-card::before {
-          content: ''; position: absolute; left: 0; top: 0; bottom: 0;
-          width: 3px; border-radius: 3px 0 0 3px;
-        }
-        .ns-task-card.hot::before  { background: #ff4444; box-shadow: 0 0 8px rgba(255,68,68,0.5); }
-        .ns-task-card.warm::before { background: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.5); }
-        .ns-task-card.cold::before { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.3); }
-        .ns-task-card:hover { transform: translateX(-2px); border-color: #1e2535; background: #0f1520; }
-        .ns-task-card.hot:hover  { border-color: rgba(255,68,68,0.2); }
-        .ns-task-card.warm:hover { border-color: rgba(245,158,11,0.2); }
-        .ns-task-card.cold:hover { border-color: rgba(34,197,94,0.15); }
-        .ns-task-card.done { opacity: 0.45; background: #0a0d12; }
-        .ns-task-card.done .ns-task-title { text-decoration: line-through; color: #334155; }
-
-        .ns-task-top {
-          display: flex; align-items: flex-start;
-          justify-content: space-between; gap: 8px; margin-bottom: 7px;
-        }
+        .ns-task-card:hover { transform: translateX(-2px); border-color: #2b3d5d; }
+        .ns-task-card.hot { border-left-color: #ff5d5d; }
+        .ns-task-card.warm { border-left-color: #ffbf47; }
+        .ns-task-card.cold { border-left-color: #4ade80; }
+        .ns-task-card.done { opacity: 0.55; background: rgba(255,255,255,0.02); }
+        .ns-task-card.done .ns-task-card-title { text-decoration: line-through; color: #8ea1bb; }
+        .ns-task-card-head { display: flex; align-items: flex-start; gap: 10px; }
         .ns-task-check {
-          width: 18px; height: 18px; border-radius: 5px;
-          border: 2px solid #1e2535; background: transparent;
-          cursor: pointer; flex-shrink: 0;
-          display: flex; align-items: center; justify-content: center;
-          transition: all 0.3s ease; position: relative; overflow: hidden;
+          width: 18px;
+          height: 18px;
+          margin-top: 1px;
+          border-radius: 6px;
+          border: 2px solid #35507c;
+          background: transparent;
+          cursor: pointer;
+          flex-shrink: 0;
+          position: relative;
         }
-        .ns-task-check:hover { border-color: #4ade80; background: rgba(74,222,128,0.05); }
-        .ns-task-check.checked { border-color: #4ade80; background: rgba(74,222,128,0.12); }
+        .ns-task-check.checked { border-color: #34d399; background: rgba(52, 211, 153, 0.12); }
         .ns-task-check.checked::after {
-          content: ''; position: absolute; width: 5px; height: 9px;
-          border-right: 2px solid #4ade80; border-bottom: 2px solid #4ade80;
-          transform: rotate(45deg) translate(-1px,-1px);
-          animation: ns-check-draw 0.3s ease forwards;
+          content: '';
+          position: absolute;
+          left: 4px;
+          top: 1px;
+          width: 4px;
+          height: 8px;
+          border-right: 2px solid #34d399;
+          border-bottom: 2px solid #34d399;
+          transform: rotate(45deg);
         }
-        @keyframes ns-check-draw {
-          from { opacity: 0; transform: rotate(45deg) translate(-1px,-1px) scale(0.5); }
-          to   { opacity: 1; transform: rotate(45deg) translate(-1px,-1px) scale(1); }
-        }
+        .ns-task-card-main { flex: 1; min-width: 0; }
+        .ns-task-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+        .ns-task-card-title { font-size: 13px; font-weight: 700; color: #eff5ff; line-height: 1.4; }
         .ns-task-badge {
-          display: inline-flex; align-items: center; gap: 4px;
-          padding: 2px 7px; border-radius: 4px; font-size: 10px;
-          font-weight: 700; font-family: 'JetBrains Mono', monospace;
-          letter-spacing: 0.5px; flex-shrink: 0;
+          padding: 3px 7px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          flex-shrink: 0;
+          border: 1px solid rgba(255,255,255,0.08);
         }
-        .ns-task-badge.hot  { background: rgba(255,68,68,0.12);  color: #ff6666; border: 1px solid rgba(255,68,68,0.2); }
-        .ns-task-badge.warm { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
-        .ns-task-badge.cold { background: rgba(34,197,94,0.1);   color: #4ade80; border: 1px solid rgba(34,197,94,0.15); }
-        .ns-task-title { font-size: 13px; font-weight: 600; color: #e2e8f0; line-height: 1.4; flex: 1; }
-        .ns-task-meta  { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-        .ns-task-due   { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #475569; font-family: 'JetBrains Mono', monospace; }
-        .ns-task-due.urgent { color: #ff6666; }
-        .ns-task-from  { font-size: 11px; color: #334155; }
-        .ns-task-snippet {
-          font-size: 11px; color: #334155; line-height: 1.5;
-          border-top: 1px solid #0e1420; padding-top: 7px; margin-top: 4px;
-          font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        .ns-task-badge.hot { color: #ffd7d7; background: rgba(255,93,93,0.14); }
+        .ns-task-badge.warm { color: #ffefc5; background: rgba(255,191,71,0.14); }
+        .ns-task-badge.cold { color: #d6ffe8; background: rgba(74,222,128,0.14); }
+        .ns-task-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: #9db0ca; margin-bottom: 6px; }
+        .ns-task-why { font-size: 11px; color: #b8c9de; line-height: 1.45; margin-bottom: 6px; }
+        .ns-task-snippet { font-size: 11px; color: #8ea1bb; line-height: 1.45; border-top: 1px solid #162133; padding-top: 6px; }
+        .ns-task-loading, .ns-task-empty {
+          padding: 40px 22px;
+          text-align: center;
+          color: #9db0ca;
+          font-size: 13px;
+          line-height: 1.6;
         }
-
-        /* ---- PARTICLE ---- */
-        .ns-particle {
-          position: absolute; width: 5px; height: 5px; border-radius: 50%;
-          background: #4ade80; pointer-events: none;
-          animation: ns-float-up 0.8s ease forwards; z-index: 10;
+        .ns-task-spinner {
+          width: 30px;
+          height: 30px;
+          border: 2px solid #1a2740;
+          border-top-color: #6f7dff;
+          border-radius: 50%;
+          margin: 0 auto 14px;
+          animation: ns-task-spin 0.8s linear infinite;
         }
-        @keyframes ns-float-up {
-          0%   { opacity: 0.8; transform: translateY(0) scale(1); }
-          100% { opacity: 0;   transform: translateY(-28px) scale(0.3); }
+        @keyframes ns-task-spin { to { transform: rotate(360deg); } }
+        .ns-task-snake {
+          position: absolute;
+          left: 42px;
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: radial-gradient(circle at 35% 35%, #ffffff, #93c5fd 42%, #22d3ee 100%);
+          box-shadow: 0 0 14px rgba(34, 211, 238, 0.55);
+          animation: ns-snake-travel 0.7s ease-out forwards;
+          pointer-events: none;
         }
-
-        /* ---- LOADING / EMPTY ---- */
-        .ns-loading {
-          display: flex; flex-direction: column; align-items: center;
-          justify-content: center; gap: 14px; padding: 48px 24px;
-          color: #334155; font-size: 13px; text-align: center;
+        @keyframes ns-snake-travel {
+          0% { opacity: 0; transform: translateY(18px) scale(0.5); }
+          30% { opacity: 1; transform: translateY(0) scale(1); }
+          100% { opacity: 0; transform: translateY(-36px) scale(0.65); }
         }
-        .ns-spinner {
-          width: 32px; height: 32px; border: 2px solid #0e1420;
-          border-top-color: #6366f1; border-radius: 50%;
-          animation: ns-spin 0.7s linear infinite;
+        .ns-task-footer {
+          padding: 12px;
+          border-top: 1px solid #162133;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
         }
-        @keyframes ns-spin { to { transform: rotate(360deg); } }
-        .ns-empty {
-          text-align: center; padding: 48px 24px;
-          color: #1e2535; font-size: 13px; line-height: 1.8;
+        .ns-task-footer-copy { font-size: 11px; color: #93a6bf; }
+        .ns-task-refresh {
+          padding: 8px 12px;
+          border: none;
+          border-radius: 10px;
+          background: linear-gradient(135deg, #6f7dff, #4b59e8);
+          color: white;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
         }
-        .ns-empty .ns-empty-icon { font-size: 32px; margin-bottom: 12px; display: block; }
-
-        /* ---- FOOTER ---- */
-        #ns-p-footer {
-          padding: 10px 12px; border-top: 1px solid #0e1420;
-          display: flex; gap: 8px; flex-shrink: 0;
-        }
-        #ns-scan-btn {
-          flex: 1; padding: 8px;
-          background: linear-gradient(135deg, #6366f1, #4f46e5);
-          color: white; border: none; border-radius: 7px;
-          font-size: 12px; font-weight: 600; cursor: pointer;
-          font-family: 'DM Sans', sans-serif; transition: opacity 0.15s;
-          display: flex; align-items: center; justify-content: center; gap: 6px;
-        }
-        #ns-scan-btn:hover { opacity: 0.85; }
-        #ns-scan-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-        #ns-msg-info {
-          font-size: 10px; color: #1e2535; text-align: center;
-          padding: 0 4px; display: flex; align-items: center;
-          font-family: 'JetBrains Mono', monospace;
-        }
+        .ns-task-refresh:disabled { opacity: 0.45; cursor: not-allowed; }
       </style>
-
-      <div id="ns-vbar-wrap">
-        <div id="ns-vbar-fill"></div>
-        <div id="ns-vbar-star">
-          <div id="ns-vbar-star-rays"></div>
-          <svg id="ns-vbar-star-inner"
-            width="26" height="26" viewBox="0 0 26 26"
-            xmlns="http://www.w3.org/2000/svg"
-            style="filter: drop-shadow(0 0 6px #4ade80) drop-shadow(0 0 14px #22d3ee) drop-shadow(0 0 22px rgba(74,222,128,0.6));">
-            <polygon fill="#4ade80"
-              points="13,1 16.09,9.26 25,9.26 17.95,14.74 20.55,23 13,18 5.45,23 8.05,14.74 1,9.26 9.91,9.26"/>
-          </svg>
+      <div class="ns-track-rail">
+        <div class="ns-track-stars">***</div>
+        <div class="ns-track-shell">
+          <div class="ns-track-fill" id="ns-track-fill"></div>
+          <div class="ns-track-head" id="ns-track-head">*</div>
         </div>
+        <div class="ns-track-note" id="ns-track-note">Ready to climb</div>
       </div>
-
-      <div id="ns-panel-content">
-        <div id="ns-p-header">
-          <div id="ns-p-title-row">
-            <div id="ns-p-title">
-              <div class="ns-logo">⚡</div>
-              Thread Prioritizer
+      <div class="ns-task-main">
+        <div class="ns-task-head">
+          <div class="ns-task-title-row">
+            <div class="ns-task-title-wrap">
+              <div class="ns-task-mark">TB</div>
+              <div>
+                <div class="ns-task-title">AI Task Breakdown</div>
+                <div class="ns-task-subtitle">One focused task lane with calm rewards</div>
+              </div>
             </div>
-            <button id="ns-p-close">✕</button>
+            <button class="ns-task-close" id="ns-task-close" type="button">x</button>
           </div>
-          <div id="ns-p-counts">
-            <div class="ns-count-pill hot">🔴 <span id="ns-hot-count">0</span></div>
-            <div class="ns-count-pill warm">🟡 <span id="ns-warm-count">0</span></div>
-            <div class="ns-count-pill cold">🟢 <span id="ns-cold-count">0</span></div>
+          <div class="ns-task-progress-row">
+            <span id="ns-task-progress-copy">0 of 0 tasks complete</span>
+            <strong id="ns-task-streak-copy">0 streak</strong>
           </div>
-          <div id="ns-p-filter">
-            <button class="ns-filter-btn active" data-filter="ALL">ALL</button>
-            <button class="ns-filter-btn" data-filter="HOT">🔴 HOT</button>
-            <button class="ns-filter-btn" data-filter="WARM">🟡 WARM</button>
-            <button class="ns-filter-btn" data-filter="COLD">🟢 COLD</button>
-          </div>
+          <div class="ns-task-complete-banner" id="ns-task-complete-banner"></div>
         </div>
-
-        <div id="ns-progress-row">
-          <span id="ns-progress-label">0 of 0 tasks done</span>
-          <span id="ns-progress-pct">0%</span>
-        </div>
-
-        <div id="ns-done-msg">🌿 You did it. Rest now.</div>
-
-        <div id="ns-p-body">
-          <div class="ns-loading">
-            <div class="ns-spinner"></div>
-            <span>Scanning threads...</span>
-          </div>
-        </div>
-
-        <div id="ns-p-footer">
-          <span id="ns-msg-info"></span>
-          <button id="ns-scan-btn">⚡ Re-scan</button>
+        <div class="ns-task-body" id="ns-task-body"></div>
+        <div class="ns-task-footer">
+          <div class="ns-task-footer-copy" id="ns-task-footer-copy">Ready to scan this channel</div>
+          <button class="ns-task-refresh" id="ns-task-refresh" type="button">Re-scan</button>
         </div>
       </div>
     `;
 
     document.body.appendChild(panel);
-    panel.querySelector('#ns-p-close').onclick = removePanel;
-    panel.querySelector('#ns-scan-btn').onclick = runPrioritizer;
-    panel.querySelectorAll('.ns-filter-btn').forEach(btn => {
-      btn.onclick = () => {
-        panel.querySelectorAll('.ns-filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        filterTasks(btn.dataset.filter);
+    panel.querySelector('#ns-task-close').onclick = () => {
+      if (NS.settings) NS.settings.threadPrioritizer = false;
+      try { chrome.storage.sync.set({ threadPrioritizer: false }); } catch (_) {}
+      setEnabled(false);
+    };
+    panel.querySelector('#ns-task-refresh').onclick = runPrioritizer;
+  }
+
+  function hidePanel() {
+    if (!panel) return;
+    panel.remove();
+    panel = null;
+    tasks = [];
+    completed = new Set();
+    completionCelebrated = false;
+  }
+
+  function ensureSummaryMinimized() {
+    if (NS.summarizer && NS.summarizer.minimizePanel) NS.summarizer.minimizePanel();
+  }
+
+  function setFooter(text) {
+    const node = document.getElementById('ns-task-footer-copy');
+    if (node) node.textContent = text;
+  }
+
+  function setLoading(text) {
+    createPanel();
+    const body = document.getElementById('ns-task-body');
+    if (body) body.innerHTML = `<div class="ns-task-loading"><div class="ns-task-spinner"></div>${text}</div>`;
+    setFooter('Reading the most recent conversation context');
+  }
+
+  function spawnSnakePulse() {
+    if (!panel) return;
+    const shell = panel.querySelector('.ns-track-rail');
+    if (!shell) return;
+    const pulse = document.createElement('div');
+    pulse.className = 'ns-task-snake';
+    pulse.style.top = '120px';
+    shell.appendChild(pulse);
+    setTimeout(() => pulse.remove(), 760);
+  }
+
+  function updateProgressVisuals() {
+    if (!panel) return;
+    const total = tasks.length;
+    const done = completed.size;
+    const percent = total ? Math.round((done / total) * 100) : 0;
+    const fill = panel.querySelector('#ns-track-fill');
+    const head = panel.querySelector('#ns-track-head');
+    const copy = panel.querySelector('#ns-task-progress-copy');
+    const note = panel.querySelector('#ns-track-note');
+    const banner = panel.querySelector('#ns-task-complete-banner');
+
+    if (fill) fill.style.height = `${percent}%`;
+    if (head) head.style.bottom = `calc(${percent}% - 14px)`;
+    if (copy) copy.textContent = `${done} of ${total} tasks complete`;
+    if (note) note.textContent = total === 0 ? 'Ready to climb' : percent === 100 ? 'Trail complete' : `${percent}% climbed`;
+
+    if (banner && total > 0 && done === total) {
+      banner.classList.add('visible');
+    } else if (banner) {
+      banner.classList.remove('visible');
+    }
+  }
+
+  function updateStreakLabel(streak) {
+    const node = document.getElementById('ns-task-streak-copy');
+    if (node) node.textContent = `${streak} streak`;
+  }
+
+  function awardCompletionStreak() {
+    if (completionCelebrated) return;
+    completionCelebrated = true;
+    chrome.storage.local.get({ [STREAK_KEY]: getDefaultTaskStats() }, (stored) => {
+      const stats = stored[STREAK_KEY] || getDefaultTaskStats();
+      const today = todayKey();
+      const yesterday = yesterdayKey();
+      let streak = stats.streak || 0;
+      if (stats.lastCompletedDate === today) streak = Math.max(1, streak);
+      else if (stats.lastCompletedDate === yesterday) streak += 1;
+      else streak = 1;
+      const nextStats = {
+        streak,
+        lastCompletedDate: today,
+        totalBoardsCleared: (stats.totalBoardsCleared || 0) + 1
       };
+      chrome.storage.local.set({ [STREAK_KEY]: nextStats });
+      updateStreakLabel(streak);
+      const banner = document.getElementById('ns-task-complete-banner');
+      if (banner) {
+        banner.textContent = `All tasks completed. Take a short rest. You are on a ${streak}-board streak.`;
+        banner.classList.add('visible');
+      }
     });
   }
 
-  // --- Progress tracking ---
-  let allTasks = [];
-  let completedIds = new Set();
+  function toggleTask(index) {
+    if (completed.has(index)) completed.delete(index);
+    else completed.add(index);
 
-  function updateProgress() {
-    const total = allTasks.length;
-    const done  = completedIds.size;
-    const pct   = total === 0 ? 0 : Math.round((done / total) * 100);
+    const card = panel.querySelector(`.ns-task-card[data-id="${index}"]`);
+    const check = panel.querySelector(`.ns-task-check[data-id="${index}"]`);
+    if (card) card.classList.toggle('done', completed.has(index));
+    if (check) check.classList.toggle('checked', completed.has(index));
 
-    const vbar    = document.getElementById('ns-vbar-fill');
-    const star    = document.getElementById('ns-vbar-star');
-    const wrap    = document.getElementById('ns-vbar-wrap');
-    const label   = document.getElementById('ns-progress-label');
-    const pctEl   = document.getElementById('ns-progress-pct');
-    const doneMsg = document.getElementById('ns-done-msg');
-
-    if (vbar) {
-      vbar.style.height = pct + '%';
-      vbar.classList.toggle('glowing', done > 0);
-    }
-
-    if (star && wrap) {
-      if (done > 0 && pct > 0) {
-        star.classList.add('active');
-        const wrapHeight = wrap.offsetHeight;
-        const starBottomPx = (pct / 100) * wrapHeight;
-        star.style.bottom = (starBottomPx - 10) + 'px';
-      } else {
-        star.classList.remove('active');
-      }
-    }
-
-    if (label) label.textContent = `${done} of ${total} task${total !== 1 ? 's' : ''} done`;
-    if (pctEl) {
-      pctEl.textContent = pct + '%';
-      pctEl.style.color = pct === 100 ? '#4ade80' : pct >= 50 ? '#22d3ee' : '#94a3b8';
-    }
-
-    if (doneMsg) {
-      if (total > 0 && done === total) {
-        doneMsg.style.display = 'flex';
-        setTimeout(() => doneMsg.classList.add('visible'), 50);
-      } else {
-        doneMsg.classList.remove('visible');
-        setTimeout(() => {
-          if (!doneMsg.classList.contains('visible')) doneMsg.style.display = 'none';
-        }, 900);
-      }
-    }
+    spawnSnakePulse();
+    updateProgressVisuals();
+    if (tasks.length > 0 && completed.size === tasks.length) awardCompletionStreak();
+    else completionCelebrated = false;
   }
 
-  function spawnParticle(card) {
-    const dot = document.createElement('div');
-    dot.className = 'ns-particle';
-    dot.style.left = '24px';
-    dot.style.bottom = '12px';
-    card.appendChild(dot);
-    setTimeout(() => dot.remove(), 900);
-  }
-
-  function renderTasks(tasks) {
-    allTasks = tasks;
-    completedIds = new Set();
-    updateCounts(tasks);
-    updateProgress();
-
-    const body = document.getElementById('ns-p-body');
+  function renderTasks(list) {
+    createPanel();
+    tasks = list;
+    completed = new Set();
+    completionCelebrated = false;
+    const body = document.getElementById('ns-task-body');
     if (!body) return;
 
-    if (tasks.length === 0) {
-      body.innerHTML = `
-        <div class="ns-empty">
-          <span class="ns-empty-icon">🎉</span>
-          No tasks found in current view.<br>
-          <span style="color:#1e2535">Try scrolling through more messages then re-scan.</span>
-        </div>`;
+    if (!list.length) {
+      body.innerHTML = '<div class="ns-task-empty">No clear tasks found in the recent Slack messages. Scroll a bit and run the breakdown again.</div>';
+      setFooter('No actionable tasks found yet');
+      updateProgressVisuals();
       return;
     }
 
     const order = { HOT: 0, WARM: 1, COLD: 2 };
-    const sorted = [...tasks].sort((a, b) => (order[a.priority] ?? 3) - (order[b.priority] ?? 3));
-
-    body.innerHTML = sorted.map((task, i) => {
-      const p = PRIORITY[task.priority] || PRIORITY.COLD;
-      const pClass = task.priority.toLowerCase();
-      const isUrgent = task.priority === 'HOT' || (task.due && /today|asap|eod/i.test(task.due));
+    const sorted = list.slice().sort((a, b) => (order[a.priority] || 9) - (order[b.priority] || 9));
+    body.innerHTML = sorted.map((task, index) => {
+      const tone = task.priority.toLowerCase();
       return `
-        <div class="ns-task-card ${pClass}" data-priority="${task.priority}" data-id="${i}" style="animation-delay:${i * 0.05}s">
-          <div class="ns-task-top">
-            <div class="ns-task-check" data-id="${i}" title="Mark complete"></div>
-            <div class="ns-task-title">${task.title}</div>
-            <div class="ns-task-badge ${pClass}">${p.emoji} ${p.label}</div>
+        <div class="ns-task-card ${tone}" data-id="${index}">
+          <div class="ns-task-card-head">
+            <button class="ns-task-check" type="button" data-id="${index}" aria-label="Mark task complete"></button>
+            <div class="ns-task-card-main">
+              <div class="ns-task-card-top">
+                <div class="ns-task-card-title">${escapeHtml(task.title)}</div>
+                <div class="ns-task-badge ${tone}">${escapeHtml(task.priority)}</div>
+              </div>
+              <div class="ns-task-meta">
+                <span>Due: ${escapeHtml(task.due)}</span>
+                <span>From: ${escapeHtml(task.from)}</span>
+              </div>
+              ${task.why ? `<div class="ns-task-why">${escapeHtml(task.why)}</div>` : ''}
+              ${task.snippet ? `<div class="ns-task-snippet">${escapeHtml(task.snippet)}</div>` : ''}
+            </div>
           </div>
-          <div class="ns-task-meta">
-            <div class="ns-task-due ${isUrgent ? 'urgent' : ''}">📅 ${task.due || 'No date'}</div>
-            <div class="ns-task-from">👤 ${task.from || 'Team'}</div>
-          </div>
-          ${task.snippet ? `<div class="ns-task-snippet">"${task.snippet}"</div>` : ''}
         </div>`;
     }).join('');
 
-    body.querySelectorAll('.ns-task-check').forEach(checkbox => {
-      checkbox.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id   = checkbox.dataset.id;
-        const card = body.querySelector(`.ns-task-card[data-id="${id}"]`);
-        if (!card) return;
-
-        if (completedIds.has(id)) {
-          completedIds.delete(id);
-          checkbox.classList.remove('checked');
-          card.classList.remove('done');
-        } else {
-          completedIds.add(id);
-          checkbox.classList.add('checked');
-          spawnParticle(card);
-          setTimeout(() => card.classList.add('done'), 320);
-        }
-        updateProgress();
-      });
+    body.querySelectorAll('.ns-task-check').forEach((button) => {
+      button.addEventListener('click', () => toggleTask(button.dataset.id));
     });
-  }
 
-  function filterTasks(filter) {
-    document.querySelectorAll('.ns-task-card').forEach(card => {
-      card.style.display = (filter === 'ALL' || card.dataset.priority === filter) ? 'block' : 'none';
+    setFooter(`${list.length} task${list.length === 1 ? '' : 's'} extracted from recent messages`);
+    chrome.storage.local.get({ [STREAK_KEY]: getDefaultTaskStats() }, (stored) => {
+      updateStreakLabel((stored[STREAK_KEY] || getDefaultTaskStats()).streak || 0);
     });
+    updateProgressVisuals();
   }
 
-  function updateCounts(tasks) {
-    const hot  = tasks.filter(t => t.priority === 'HOT').length;
-    const warm = tasks.filter(t => t.priority === 'WARM').length;
-    const cold = tasks.filter(t => t.priority === 'COLD').length;
-    const h = document.getElementById('ns-hot-count');
-    const w = document.getElementById('ns-warm-count');
-    const c = document.getElementById('ns-cold-count');
-    if (h) h.textContent = hot;
-    if (w) w.textContent = warm;
-    if (c) c.textContent = cold;
-  }
-
-  function setBodyLoading(text = 'Analyzing with AI...') {
-    const body = document.getElementById('ns-p-body');
-    if (body) body.innerHTML = `<div class="ns-loading"><div class="ns-spinner"></div><span>${text}</span></div>`;
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   async function runPrioritizer() {
     createPanel();
-    const btn = document.getElementById('ns-scan-btn');
-    if (btn) btn.disabled = true;
-
-    setBodyLoading('Analyzing threads with AI...');
+    ensureSummaryMinimized();
+    setLoading('Analyzing recent Slack messages...');
+    const refresh = document.getElementById('ns-task-refresh');
+    if (refresh) refresh.disabled = true;
 
     const threads = collectThreads();
-    const info = document.getElementById('ns-msg-info');
-    if (info) info.textContent = `${threads.length} msgs`;
-
-    if (threads.length === 0) {
-      const body = document.getElementById('ns-p-body');
-      if (body) body.innerHTML = `<div class="ns-empty"><span class="ns-empty-icon">💬</span>No messages found.<br><span style="color:#1e2535">Open a Slack channel first.</span></div>`;
-      if (btn) btn.disabled = false;
+    if (!threads.length) {
+      renderTasks([]);
+      setFooter('Open a Slack channel before scanning');
+      if (refresh) refresh.disabled = false;
       return;
     }
 
     try {
-      const tasks = await callGroq(threads, mentionHandle);
-      renderTasks(tasks);
-    } catch (err) {
-      const body = document.getElementById('ns-p-body');
-      if (body) body.innerHTML = `<div class="ns-empty" style="color:#ff6666">❌ ${err.message}</div>`;
+      const list = await callGroq(threads, mentionHandle);
+      renderTasks(list);
+    } catch (error) {
+      const body = document.getElementById('ns-task-body');
+      if (body) body.innerHTML = `<div class="ns-task-empty">Task breakdown error: ${escapeHtml(error.message)}</div>`;
+      setFooter('The AI scan could not finish this time');
     }
 
-    if (btn) btn.disabled = false;
-  }
-
-  function removePanel() {
-    if (panel) { panel.remove(); panel = null; }
+    if (refresh) refresh.disabled = false;
   }
 
   function setEnabled(on) {
     enabled = !!on;
     if (enabled) runPrioritizer();
-    else removePanel();
+    else hidePanel();
   }
 
-  NS.threadPrioritizer = { setEnabled, runPrioritizer };
-  NS.modules.push((settings) => setEnabled(!!settings.threadPrioritizer));
+  NS.threadPrioritizer = { setEnabled, runPrioritizer, hidePanel };
+  NS.modules.push((settings) => {
+    enabled = !!settings.threadPrioritizer;
+    if (enabled) runPrioritizer();
+  });
 })();

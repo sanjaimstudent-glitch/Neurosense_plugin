@@ -22,21 +22,7 @@
 
   function loadSettings(cb) {
     chrome.storage.sync.get(
-      {
-        focusMode: false,
-        deepFocus: true,
-        textSimplifier: false,
-        dataVault: false,
-        ttsEnabled: false,
-        theme: 'zen',
-        focusTheme: 'zen',
-        mentionHandle: '',
-        ttsRate: 0.8,
-        ttsPitch: 1.1,
-        ttsVolume: 0.7,
-        summarizer: false,
-        threadPrioritizer: false
-      },
+      { focusMode: false, textSimplifier: false, dataVault: false, ttsEnabled: false, theme: 'zen', focusTheme: 'zen', mentionHandle: '', ttsRate: 0.8, ttsPitch: 1.1, ttsVolume: 0.7,summarizer: false, threadPrioritizer: false },
       (stored) => {
         NS.settings = stored;
         if (cb) cb(stored);
@@ -46,7 +32,7 @@
 
   function applySettings(settings) {
     NS.settings = settings;
-    if (NS.focusMode) NS.focusMode.setEnabled(!!settings.focusMode, { theme: settings.focusTheme || settings.theme, mentionHandle: settings.mentionHandle, deepFocus: settings.deepFocus !== false });
+    if (NS.focusMode) NS.focusMode.setEnabled(!!settings.focusMode, { theme: settings.focusTheme || settings.theme, mentionHandle: settings.mentionHandle });
     if (NS.simplifier) NS.simplifier.setEnabled(!!settings.textSimplifier);
     if (NS.dataVault) NS.dataVault.setEnabled(!!settings.dataVault);
     if (NS.summarizer) NS.summarizer.setEnabled(!!settings.summarizer);
@@ -55,22 +41,12 @@
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg.action === 'toggleFocus' && NS.focusMode) {
-      NS.focusMode.setEnabled(!!msg.enabled, {
-        theme: msg.theme,
-        mentionHandle: msg.mentionHandle,
-        requestFullscreen: true,
-        deepFocus: msg.deepFocus !== false
-      });
-    }
-    if (msg.action === 'toggleDeepFocus' && NS.focusMode) NS.focusMode.setDeepFocus(!!msg.enabled);
-    if (msg.action === 'setFocusOptions' && NS.focusMode) NS.focusMode.setFocusOptions({ theme: msg.theme, mentionHandle: msg.mentionHandle, deepFocus: msg.deepFocus });
+    if (msg.action === 'toggleFocus' && NS.focusMode) NS.focusMode.setEnabled(!!msg.enabled, { theme: msg.theme, mentionHandle: msg.mentionHandle });
+    if (msg.action === 'setFocusOptions' && NS.focusMode) NS.focusMode.setFocusOptions({ theme: msg.theme, mentionHandle: msg.mentionHandle });
     if (msg.action === 'toggleSimplifier' && NS.simplifier) NS.simplifier.setEnabled(!!msg.enabled);
     if (msg.action === 'toggleDataVault' && NS.dataVault) NS.dataVault.setEnabled(!!msg.enabled);
     if (msg.action === 'toggleSummarizer' && NS.summarizer) NS.summarizer.setEnabled(!!msg.enabled);
     if (msg.action === 'toggleTTS' && NS.tts) NS.tts.setEnabled(!!msg.enabled);
-    if (msg.action === 'toggleThreadPrioritizer' && NS.threadPrioritizer) NS.threadPrioritizer.setEnabled(!!msg.enabled);
-    if (msg.action === 'runThreadPrioritizer' && NS.threadPrioritizer) NS.threadPrioritizer.runPrioritizer();
     if (msg.action === 'analyzeThreads' && NS.threadAnalyzer) NS.threadAnalyzer.run();
     sendResponse({ ok: true });
     return true;
@@ -81,10 +57,14 @@
     loadSettings(applySettings);
   });
 
-  waitForSlack((_ready) => {
+  waitForSlack((ready) => {
     loadSettings((settings) => {
       NS.modules.forEach((init) => init(settings));
       applySettings(settings);
     });
   });
 })();
+
+
+
+

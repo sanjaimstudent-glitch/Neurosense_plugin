@@ -1,0 +1,20 @@
+/* NeuroSense Focus Mode */
+.neurosense-focus-hidden {
+  display: none !important;
+}
+
+.neurosense-focus [role="button"] {
+  animation: none !important;
+  transition: none !important;
+}
+
+.neurosense-focus-priority {
+  border-left: 3px solid #2eb886 !important;
+}
+
+/* Notifications: hide when Focus Mode "only notify about me" filters them out */
+.neurosense-notification-hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
